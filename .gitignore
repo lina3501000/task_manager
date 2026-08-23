@@ -1,2 +1,5 @@
 .DS_Store
-.vs_code
+.vs_code/
+.env
+.venv
+_pycache__/
