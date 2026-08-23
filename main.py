@@ -11,6 +11,7 @@ password = os.getenv("password")
 print("URL:", base_url)
 print("Username:", username)
 print("Passwort geladen:", password is not None)
+
 calendars = [
     "home-2",
     "generell-2",
@@ -59,8 +60,15 @@ def get_entries(calendar, component):
         data=body,
         auth=(username, password),
     )
+    if response.status_code != 207:
+        raise Exception(
+            f"Nextcloud Fehler {response.status_code}: "
+            f"{response.text}"
+        )
 
-def parse_events(xml):
+    return response.text
+
+def parse_events(xml, component, calendar):
     root = ET.fromstring(xml)
 
     entries = []
@@ -76,7 +84,10 @@ def parse_events(xml):
 
         data = calendar_data.text or ""
 
-        entry = {}
+        entry = {
+            "calendar": calendar,
+            "type": component,
+        }
 
         for line in data.splitlines():
             if ":" not in line:
@@ -99,36 +110,44 @@ def parse_events(xml):
             elif key == "UID":
                 entry["uid"] = value
 
-        if entry:
+        if "uid" in entry:
             entries.append(entry)
 
     return entries
 
+entries = []
 
 for calendar in calendars:
-
-    print(f"\n{'=' * 40}")
-    print(f"KALENDER: {calendar.upper()}")
-    print("=" * 40)
-
     for component in ["VEVENT", "VTODO"]:
-
-        print(f"\n--- {component} ---")
 
         response = get_entries(calendar, component)
 
-        print("Status:", response.status_code)
-
         if response.status_code != 207:
-            print(response.text)
+            print(
+                f"Fehler bei {calendar} ({component}): "
+                f"{response.status_code}"
+            )
             continue
 
-        entries = parse_events(response.text)
+        calendar_entries = parse_events(
+            response.text,
+            component,
+            calendar
+        )
 
-        for entry in entries:
-            print()
-            print("Titel:", entry.get("summary", ""))
-            print("Start:", entry.get("start", ""))
-            print("Ende: ", entry.get("end", ""))
-            print("Status:", entry.get("status", ""))
-            print("UID:", entry.get("uid", ""))
+        entries.extend(calendar_entries)
+
+for entry in entries:
+    print()
+    print("Typ:", entry["type"])
+    print("Kalender:", entry["calendar"])
+    print("Titel:", entry.get("summary", ""))
+    print("Start:", entry.get("start", ""))
+    print("Ende:", entry.get("end", ""))
+    print("Status:", entry.get("status", ""))
+    print("UID:", entry.get("uid", ""))
+
+events = [e for e in entries if e["type"] == "VEVENT"]
+tasks = [e for e in entries if e["type"] == "VTODO"]
+print("events", events)
+print("tasks", tasks)
