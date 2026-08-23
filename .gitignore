@@ -3,3 +3,5 @@
 .env
 .venv
 _pycache__/
+config.py
+./settings.json
