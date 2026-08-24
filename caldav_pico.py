@@ -73,11 +73,202 @@ def get_auth_header():
 
     return "Basic " + encoded
 
+def parse_task_xml(xml, calendar):
 
+    tasks = []
+
+    pos = 0
+
+    while True:
+
+        start = xml.find("<d:response>", pos)
+
+        if start == -1:
+            break
+
+        end = xml.find("</d:response>", start)
+
+        if end == -1:
+            break
+
+        block = xml[start:end]
+
+        task = {
+            "calendar": calendar
+        }
+
+        # href
+        a = block.find("<d:href>")
+        b = block.find("</d:href>")
+
+        if a != -1 and b != -1:
+            task["href"] = block[
+                a + len("<d:href>"):b
+            ]
+
+        # ETag
+        a = block.find("<d:getetag>")
+        b = block.find("</d:getetag>")
+
+        if a != -1 and b != -1:
+            task["etag"] = block[
+                a + len("<d:getetag>"):b
+            ]
+
+        # calendar-data
+        a = block.find("<cal:calendar-data>")
+        b = block.find("</cal:calendar-data>")
+
+        if a != -1 and b != -1:
+
+            ical = block[
+                a + len("<cal:calendar-data>"):b
+            ]
+
+            parse_task_ical(ical, task)
+
+            del ical
+
+            if "uid" in task:
+                tasks.append(task)
+
+        pos = end + len("</d:response>")
+
+    return tasks
 # --------------------------------------------------
 # CalDAV REPORT
 # --------------------------------------------------
+def get_tasks(calendar):
 
+    url = (
+        BASE_URL
+        + "/remote.php/dav/calendars/"
+        + USERNAME
+        + "/"
+        + calendar
+        + "/"
+    )
+
+    headers = {
+        "Depth": "1",
+        "Content-Type": "application/xml; charset=utf-8",
+        "Authorization": get_auth_header()
+    }
+
+    # Nur offene VTODOs anfordern.
+    body = """<?xml version="1.0" encoding="UTF-8"?>
+<c:calendar-query
+    xmlns:d="DAV:"
+    xmlns:c="urn:ietf:params:xml:ns:caldav">
+
+    <d:prop>
+        <d:getetag/>
+        <c:calendar-data/>
+    </d:prop>
+
+    <c:filter>
+        <c:comp-filter name="VCALENDAR">
+            <c:comp-filter name="VTODO">
+                <c:prop-filter name="STATUS">
+                    <c:text-match negate-condition="yes">
+                        COMPLETED
+                    </c:text-match>
+                </c:prop-filter>
+            </c:comp-filter>
+        </c:comp-filter>
+    </c:filter>
+
+</c:calendar-query>
+"""
+
+    print()
+    print("Hole Aufgaben aus", calendar)
+    check_memory()
+
+    try:
+        response = urequests.request(
+            "REPORT",
+            url,
+            headers=headers,
+            data=body
+        )
+
+        print("HTTP Status:", response.status_code)
+
+        if response.status_code != 207:
+            print("Nextcloud Fehler:", response.status_code)
+            response.close()
+            return []
+
+        xml = response.text
+        response.close()
+
+        tasks = parse_task_xml(xml, calendar)
+
+        del xml
+        gc.collect()
+
+        return tasks
+
+    except Exception as e:
+        print("CalDAV Fehler:", e)
+        gc.collect()
+        return []
+    
+def parse_task_ical(data, task):
+
+    lines = data.replace("\r\n", "\n").split("\n")
+
+    for line in lines:
+
+        line = line.strip()
+
+        if ":" not in line:
+            continue
+
+        key, value = line.split(":", 1)
+
+        key = key.split(";", 1)[0]
+
+        if key == "UID":
+            task["uid"] = value
+
+        elif key == "SUMMARY":
+            task["summary"] = value
+
+        elif key == "DTSTART":
+            task["start"] = value
+
+        elif key == "DUE":
+            task["due"] = value
+
+        elif key == "RELATED-TO":
+            task["related_to"] = value
+            
+            
+def build_task_hierarchy(tasks):
+
+    task_by_uid = {}
+
+    for task in tasks:
+        task_by_uid[task["uid"]] = task
+        task["children"] = []
+
+    roots = []
+
+    for task in tasks:
+
+        parent_uid = task.get("related_to", "")
+
+        if parent_uid and parent_uid in task_by_uid:
+
+            task_by_uid[parent_uid]["children"].append(task)
+
+        else:
+
+            roots.append(task)
+
+    return roots
 def get_entries(calendar, component):
 
     url = (
@@ -116,8 +307,13 @@ def get_entries(calendar, component):
 
     print()
     print("Hole", component, "aus", calendar)
-    check_memory()
+
     gc.collect()
+    check_memory()
+
+    response = None
+    xml = None
+
     try:
         response = urequests.request(
             "REPORT",
@@ -125,26 +321,59 @@ def get_entries(calendar, component):
             headers=headers,
             data=body
         )
-        check_memory()
 
         print("HTTP Status:", response.status_code)
 
         if response.status_code != 207:
-            print("Nextcloud Fehler:", response.status_code)
             response.close()
+            del response
+            gc.collect()
+
+            print("Nextcloud Fehler")
             return []
 
+        # Antwort vollständig auslesen
         xml = response.text
+
+        # Response sofort schließen
         response.close()
+        del response
+        response = None
 
-        entries = parse_xml(xml, component, calendar)
+        gc.collect()
+        check_memory()
 
+        # XML parsen
+        entries = parse_xml(
+            xml,
+            component,
+            calendar
+        )
+
+        # Große XML-Daten sofort freigeben
         del xml
+        xml = None
+
+        gc.collect()
+        check_memory()
 
         return entries
 
     except Exception as e:
+
         print("CalDAV Fehler:", e)
+
+        if response is not None:
+            try:
+                response.close()
+            except:
+                pass
+
+        del response
+        del xml
+
+        gc.collect()
+
         return []
 
 def complete_task(task):
@@ -813,6 +1042,32 @@ def add_task(task, calendar):
         gc.collect()
 
         return False
+
+
+def get_all_tasks():
+    """
+    Holt alle offenen VTODOs aus allen Kalendern.
+    Unteraufgaben bleiben über RELATED-TO erhalten.
+    """
+
+    tasks = []
+
+    for calendar in CALENDARS:
+        entries = get_entries(calendar, "VTODO")
+
+        for task in entries:
+            if is_completed(task):
+                continue
+
+            # Keine wiederkehrenden Aufgaben
+            if task.get("rrule"):
+                continue
+
+            tasks.append(task)
+
+        gc.collect()
+
+    return tasks
 # --------------------------------------------------
 # Ausgabe
 # --------------------------------------------------
