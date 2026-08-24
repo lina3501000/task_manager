@@ -713,6 +713,106 @@ def print_task_tree(tasks, level=0):
                 children,
                 level + 1
             )
+def add_task(task, calendar):
+
+    uid = task.get("uid")
+
+    if not uid:
+        print("Keine UID vorhanden")
+        return False
+
+    url = (
+        BASE_URL
+        + "/remote.php/dav/calendars/"
+        + USERNAME
+        + "/"
+        + calendar
+        + "/"
+        + uid
+        + ".ics"
+    )
+
+    now = time.gmtime()
+
+    dtstamp = (
+        "{:04d}{:02d}{:02d}T{:02d}{:02d}{:02d}Z"
+        .format(
+            now[0],
+            now[1],
+            now[2],
+            now[3],
+            now[4],
+            now[5]
+        )
+    )
+
+    ical = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//Pico W//CalDAV//EN\r\n"
+        "BEGIN:VTODO\r\n"
+        "UID:" + uid + "\r\n"
+        "DTSTAMP:" + dtstamp + "\r\n"
+        "SUMMARY:" + task.get("summary", "") + "\r\n"
+    )
+
+    if task.get("start"):
+        ical += "DTSTART;VALUE=DATE:" + task["start"] + "\r\n"
+
+    if task.get("due"):
+        ical += "DUE;VALUE=DATE:" + task["due"] + "\r\n"
+
+    if task.get("description"):
+        ical += "DESCRIPTION:" + task["description"] + "\r\n"
+
+    if task.get("related_to"):
+        ical += "RELATED-TO:" + task["related_to"] + "\r\n"
+
+    ical += (
+        "STATUS:NEEDS-ACTION\r\n"
+        "PERCENT-COMPLETE:0\r\n"
+        "END:VTODO\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    print("===== PUT ICAL =====")
+    print(ical)
+    print("====================")
+
+    headers = {
+        "Authorization": get_auth_header(),
+        "Content-Type": "text/calendar"
+    }
+
+    try:
+
+        response = urequests.put(
+            url,
+            headers=headers,
+            data=ical
+        )
+        print("PUT URL:", url)
+        print("Content-Type:", headers["Content-Type"])
+
+        status = response.status_code
+
+        print("PUT Status:", status)
+
+        response.close()
+
+        if status in (200, 201, 204):
+            print("Aufgabe erfolgreich erstellt")
+            return True
+
+        print("Nextcloud Fehler:", status)
+        return False
+
+    except Exception as e:
+
+        print("Fehler beim Erstellen:", e)
+        gc.collect()
+
+        return False
 # --------------------------------------------------
 # Ausgabe
 # --------------------------------------------------
