@@ -7,11 +7,64 @@ class TaskDisplay:
         if not value:
             return "-"
 
-        # YYYYMMDD
         if len(value) >= 8:
-            return value[6:8] + "." + value[4:6] + "." + value[0:4]
+            return (
+                value[6:8]
+                + "."
+                + value[4:6]
+                + "."
+                + value[0:4]
+            )
 
         return value
+
+    def draw_task(self, task, y, level=0):
+
+        lcd = self.screen
+
+        name = task.get("summary", "Ohne Namen")
+        due = self.format_date(
+            task.get("due", "") or task.get("end", "")
+        )
+        calendar = task.get("calendar", "-")
+
+        x = 5 + (level * 12)
+
+        # Aufgabenname
+        lcd.text(
+            name[:35],
+            x,
+            y,
+            lcd.WHITE
+        )
+
+        # Fälligkeitsdatum
+        lcd.text(
+            due,
+            x,
+            y + 15,
+            lcd.WHITE
+        )
+
+
+
+        y += 38
+
+        # Unteraufgaben
+        children = task.get("children", [])
+
+        for child in children:
+
+            if y >= lcd.height:
+                break
+
+            y = self.draw_task(
+                child,
+                y,
+                level + 1
+            )
+
+        return y
 
     def show_tasks(self, tasks):
 
@@ -23,46 +76,12 @@ class TaskDisplay:
 
         for task in tasks:
 
-            name = task.get("summary", "Ohne Namen")
-            start = self.format_date(task.get("start", ""))
-            end = self.format_date(
-                task.get("end", "") or task.get("due", "")
-            )
-            calendar = task.get("calendar", "-")
-
-            # Aufgabenname
-            lcd.text(
-                name[:45],
-                5,
-                y,
-                lcd.WHITE
-            )
-
-            # Informationen darunter
-            lcd.text(
-                start,
-                5,
-                y + 15,
-                lcd.WHITE
-            )
-
-            lcd.text(
-                end,
-                85,
-                y + 15,
-                lcd.WHITE
-            )
-
-            lcd.text(
-                calendar[:20],
-                165,
-                y + 15,
-                lcd.WHITE
-            )
-
-            y += 38
-
             if y >= lcd.height:
                 break
+
+            y = self.draw_task(
+                task,
+                y
+            )
 
         lcd.show_down()
