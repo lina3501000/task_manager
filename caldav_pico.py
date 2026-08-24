@@ -150,6 +150,7 @@ def get_entries(calendar, component):
 def complete_task(task):
 
     href = task.get("href")
+    etag = task.get("etag")
 
     if not href:
         print("Keine Href für Aufgabe vorhanden")
@@ -163,6 +164,7 @@ def complete_task(task):
     print(task.get("summary", ""))
 
     try:
+        # Bestehende iCalendar-Datei holen
         response = urequests.get(
             url,
             headers={
@@ -178,137 +180,52 @@ def complete_task(task):
 
         ical = response.text
         response.close()
-        print("===== ICAL =====")
-        print(ical)
-        print("===============\n")
-        gc.collect()
-        check_memory()
 
-        rrule = task.get("rrule", "")
-        uid = task.get("uid", "")
-        summary = task.get("summary", "")
-        # =============================================
-        # WIEDERKEHRENDE AUFGABE
-        # =============================================
-
-        if rrule:
-
-            recurrence_id = task.get("recurrence_id", "")
-
-            if not recurrence_id:
-                print("Keine RECURRENCE-ID möglich")
-                del ical
-                gc.collect()
-                return False
-
-            # Prüfen, ob diese Instanz bereits existiert
-            search = (
-                "RECURRENCE-ID:" + recurrence_id
+        # STATUS ändern
+        if "STATUS:" in ical:
+            ical = ical.replace(
+                "STATUS:NEEDS-ACTION",
+                "STATUS:COMPLETED"
             )
-
-            if search in ical:
-                print("Diese Instanz existiert bereits")
-
-                # Alle VTODOs mit dieser RECURRENCE-ID entfernen
-                while True:
-
-                    recurrence_pos = ical.find(search)
-
-                    if recurrence_pos == -1:
-                        break
-
-                    start = ical.rfind(
-                        "BEGIN:VTODO",
-                        0,
-                        recurrence_pos
-                    )
-
-                    end = ical.find(
-                        "END:VTODO",
-                        recurrence_pos
-                    )
-
-                    if start == -1 or end == -1:
-                        break
-
-                    end += len("END:VTODO")
-
-                    ical = (
-                        ical[:start]
-                        + ical[end:]
-                    )
-                # Eine einzige erledigte Ausnahme neu hinzufügen
-                exception = (
-                    "BEGIN:VTODO\r\n"
-                    "UID:" + task.get("uid", "") + "\r\n"
-                    "RECURRENCE-ID:" + recurrence_id + "\r\n"
-                    "SUMMARY:" + task.get("summary", "") + "\r\n"
-                    "STATUS:COMPLETED\r\n"
-                    "PERCENT-COMPLETE:100\r\n"
-                    "END:VTODO\r\n"
-                )
-
-                marker = "END:VCALENDAR"
-                position = ical.find(marker)
-
-                ical = (
-                    ical[:position]
-                    + exception
-                    + ical[position:]
-                )
-
-            else:
-                # Neue Ausnahme hinzufügen
-                exception = (
-                    "BEGIN:VTODO\r\n"
-                    "UID:" + task.get("uid", "") + "\r\n"
-                    "RECURRENCE-ID:" + recurrence_id + "\r\n"
-                    "SUMMARY:" + task.get("summary", "") + "\r\n"
-                    "STATUS:COMPLETED\r\n"
-                    "PERCENT-COMPLETE:100\r\n"
-                    "END:VTODO\r\n"
-                )
-
-                marker = "END:VCALENDAR"
-                position = ical.find(marker)
-
-                if position == -1:
-                    print("Ungültige iCalendar-Datei")
-                    del ical
-                    gc.collect()
-                    return False
-
-                ical = (
-                    ical[:position]
-                    + exception
-                    + ical[position:]
-                )
-
-        # =============================================
-        # NORMALE AUFGABE
-        # =============================================
 
         else:
-            ical = (
-                "BEGIN:VCALENDAR\r\n"
-                "VERSION:2.0\r\n"
-                "PRODID:-//Pico W//CalDAV//EN\r\n"
-                "BEGIN:VTODO\r\n"
-                "UID:" + uid + "\r\n"
-                "SUMMARY:" + summary + "\r\n"
+            marker = "END:VTODO"
+            ical = ical.replace(
+                marker,
                 "STATUS:COMPLETED\r\n"
-                "PERCENT-COMPLETE:100\r\n"
-                "END:VTODO\r\n"
-                "END:VCALENDAR\r\n"
+                "END:VTODO"
             )
 
-        gc.collect()
+        # PERCENT-COMPLETE setzen
+        if "PERCENT-COMPLETE:" in ical:
+            lines = ical.split("\r\n")
+
+            new_lines = []
+
+            for line in lines:
+                if line.startswith("PERCENT-COMPLETE:"):
+                    new_lines.append(
+                        "PERCENT-COMPLETE:100"
+                    )
+                else:
+                    new_lines.append(line)
+
+            ical = "\r\n".join(new_lines)
+
+        else:
+            ical = ical.replace(
+                "END:VTODO",
+                "PERCENT-COMPLETE:100\r\n"
+                "END:VTODO"
+            )
+
         check_memory()
 
+        # Zurück zu Nextcloud
         headers = {
             "Content-Type": "text/calendar; charset=utf-8",
             "Authorization": auth,
-            "If-Match": task.get("etag", "")
+            "If-Match": etag
         }
 
         response = urequests.put(
@@ -317,26 +234,25 @@ def complete_task(task):
             data=ical
         )
 
-        print("PUT Status:", response.status_code)
-
+        status = response.status_code
         response.close()
 
         del ical
         gc.collect()
 
-        if response.status_code in (200, 201, 204):
+        print("PUT Status:", status)
+
+        if status in (200, 201, 204):
             print("Aufgabe erfolgreich abgeschlossen")
             return True
 
-        print("Nextcloud Fehler:", response.status_code)
+        print("Nextcloud Fehler:", status)
         return False
 
     except Exception as e:
         print("Fehler beim Abschließen:", e)
         gc.collect()
         return False
-    
-    
 # --------------------------------------------------
 # XML auswerten
 # --------------------------------------------------
@@ -820,61 +736,3 @@ def print_entries(entries):
         print("Href:", entry.get("href", ""))
         print("ETag:", entry.get("etag", ""))
 
-# --------------------------------------------------
-# Hauptprogramm
-# --------------------------------------------------
-
-def main():
-
-    print("=== Pico W CalDAV ===")
-
-    connect_wifi()
-
-    entries = get_all_entries()
-
-    print()
-    print("=====================")
-    print("Einträge:", len(entries))
-    print("=====================")
-
-    # Falls du die komplette Debug-Ausgabe noch brauchst:
-    print_entries(entries)
-
-    tasks = get_current_tasks(entries)
-    for task in tasks:
-        if task.get("summary") == "test for task":
-            if complete_task(task):
-                print("test for task is completed")
-            else:
-                print("test for task konnte nicht abgeschlossen werden")
-            break
-    events = get_upcoming_events(entries)
-
-    print()
-    print("Aktuelle Aufgaben:", len(tasks))
-    print("Kommende Events:", len(events))
-
-    task_tree = build_task_hierarchy(tasks)
-
-    print()
-    print("=== Aufgaben ===")
-    print_task_tree(task_tree)
-
-    print()
-    print("=== Events ===")
-
-    for event in events:
-        print(
-            event.get("summary", ""),
-            "|",
-            event.get("start", ""),
-            "-",
-            event.get("end", "")
-        )
-    print(min_free_memory,"bytes")
-
-    return entries, events, tasks
-
-
-
-main()
