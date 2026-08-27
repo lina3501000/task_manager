@@ -8,6 +8,15 @@ LCD.bl_ctrl(100)
 
 caldav.connect_wifi()
 
+"""task = {
+    "uid": "test124",
+    "summary": "NeueAufgabe",
+    "due": "20260830",
+    "subtasks": ["test"]
+}
+
+caldav.add_task(task, "home-2")"""
+
 entries = caldav.get_all_entries()
 
 tasks = caldav.get_current_tasks(entries)
