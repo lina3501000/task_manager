@@ -1091,3 +1091,15 @@ def print_entries(entries):
         print("Href:", entry.get("href", ""))
         print("ETag:", entry.get("etag", ""))
 
+def get_all_children(task):
+    children = []
+
+    for child in task.get("children", []):
+
+        children.append(child)
+
+        children.extend(
+            get_all_children(child)
+        )
+
+    return children
