@@ -2,20 +2,14 @@ import caldav
 from screen import LCD_3inch5
 from task_display import TaskDisplay
 import time
+import scheduled_tasks
 
 LCD = LCD_3inch5()
 LCD.bl_ctrl(100)
 
 caldav.connect_wifi()
 
-"""task = {
-    "uid": "test124",
-    "summary": "NeueAufgabe",
-    "due": "20260830",
-    "subtasks": ["test"]
-}
-
-caldav.add_task(task, "home-2")"""
+scheduled_tasks.run()
 
 entries = caldav.get_all_entries()
 
