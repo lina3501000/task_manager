@@ -1,96 +1,7 @@
 import time
 import caldav
 import gc
-
-
-# ==================================================
-# Aufgaben
-# ==================================================
-
-TASKS = [
-
-    {
-        "name": "Zaehne putzen",
-        "calendar": "home-2",
-
-        "type": "daily",
-
-        # Aufgabe wird heute erstellt
-        # und ist heute fällig
-        "due_after": 0,
-    },
-
-
-    {
-        "name": "friday",
-        "calendar": "home-2",
-
-        "type": "weekly",
-        "weekday": 4, # Freitag erstellen,Freitag fällig
-        "due_after": 0,
-    },
-
-
-    {
-        "name": "sunday",
-        "calendar": "home-2",
-
-        "type": "weekly",
-        "weekday": 6, # Sonntag erstellen, Mittwoch fällig
-        "due_after": 3,
-
-        "children": [
-            {
-                "name": "under1"
-            },
-            {
-                "name": "under2"
-            },
-            {
-                "name": "under3"
-            }
-        ]
-    },
-
-
-    {
-        "name": "Monatsaufgabe",
-        "calendar": "home-2",
-
-        "type": "monthly",
-        "day": 1,
-
-        "due_after": 5,
-    },
-
-
-    {
-        "name": "Alle 3 Tage",
-        "calendar": "home-2",
-
-        "type": "interval",
-        "days": 3,
-
-        "start": "20260828",
-
-        "due_after": 2,
-    },
-
-
-    {
-        "name": "Alle 2 Wochen",
-        "calendar": "home-2",
-
-        "type": "interval",
-        "days": 14,
-
-        "start": "20260828",
-
-        "due_after": 3,
-    },
-
-]
-
+import tasks
 
 # ==================================================
 # Datum
@@ -505,7 +416,7 @@ def check_scheduled_tasks():
     created = 0
 
 
-    for task in TASKS:
+    for task in tasks.TASKS:
 
         print()
         print(
