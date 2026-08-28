@@ -796,7 +796,7 @@ def filter_tasks(tasks):
             selected = upcoming[0]
 
         result.append(selected)
-
+    result.sort(key=get_task_date)
     return result
 def get_current_tasks(entries):
 
