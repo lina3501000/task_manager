@@ -1066,6 +1066,7 @@ def get_all_tasks():
             tasks.append(task)
 
         gc.collect()
+    tasks.sort(key=get_task_date)
 
     return tasks
 # --------------------------------------------------

@@ -11,8 +11,8 @@ caldav.connect_wifi()
 
 scheduled_tasks.check_scheduled_tasks()
 
-entries = caldav.get_all_entries()
-tasks = caldav.get_current_tasks(entries)
+tasks = caldav.get_all_tasks()
+
 task_tree = caldav.build_task_hierarchy(tasks)
 
 display = TaskDisplay(LCD)
